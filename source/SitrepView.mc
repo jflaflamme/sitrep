@@ -98,7 +98,9 @@ class SitrepView extends WatchUi.WatchFace {
         // Fixed line centres on the 280 px design. Not spaced by getFontHeight(): the
         // number fonts report far more height than their digits use (seen on the watch:
         // the stacked layout pushed the last two lines off the bottom).
-        var ys = [scale(50, s), scale(80, s), scale(128, s), scale(168, s), scale(196, s), scale(226, s)];
+        // (the small line under the time sits at 162, not 168: at 168 the message count
+        // crowded the heart rate row below, seen on the watch in 0.2.0)
+        var ys = [scale(50, s), scale(80, s), scale(128, s), scale(162, s), scale(196, s), scale(226, s)];
 
         // widest a field may draw: the side columns are 120 px apart, the lines above and
         // below have the width of the circle at their height
