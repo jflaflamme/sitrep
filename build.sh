@@ -17,6 +17,15 @@ KEY="${KEY:-$HOME/.config/garmin-ciq/developer_key.der}"
 SDK="$(cat "$HOME/.Garmin/ConnectIQ/current-sdk.cfg")"
 OUT=bin/SITREP.prg
 
+# the version shown on the watch (strings.xml) must match the app version (manifest.xml)
+app_version=$(sed -n 's/.* version="\([0-9.]*\)".*/\1/p' manifest.xml | tail -1)
+shown_version=$(sed -n 's/.*id="AppVersion">\([^<]*\)<.*/\1/p' resources/strings/strings.xml)
+if [ "$app_version" != "$shown_version" ]; then
+    echo "version mismatch: manifest.xml $app_version, strings.xml AppVersion $shown_version" >&2
+    exit 1
+fi
+echo "SITREP $app_version for $DEVICE"
+
 mkdir -p bin
 # -r: no debug info; -O 2z: fast code, then smallest size (faces run on tight memory)
 "$SDK/bin/monkeyc" -f monkey.jungle -d "$DEVICE" -y "$KEY" -o "$OUT" -r -O 2z -w

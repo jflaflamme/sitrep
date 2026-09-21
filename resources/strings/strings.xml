@@ -1,3 +1,5 @@
 <strings>
     <string id="AppName">SITREP</string>
+    <!-- keep in step with version= in manifest.xml (build.sh checks) -->
+    <string id="AppVersion">0.2.0</string>
 </strings>

@@ -304,6 +304,9 @@ class SitrepView extends WatchUi.WatchFace {
             return;
         }
         var r = scale(130, s);
+        if (dc has :setAntiAlias) {
+            dc.setAntiAlias(true);   // smooth arc edges; the arcs were visibly stepped without
+        }
         dc.setColor(_track, Graphics.COLOR_TRANSPARENT);
         dc.setPenWidth(scale(3, s));
         if (top) {
