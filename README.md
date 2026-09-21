@@ -34,8 +34,14 @@ for weather and the weather fields stay empty.
 ## Install a release
 
 Each [release](https://github.com/jflaflamme/sitrep/releases) has `SITREP.prg`, built for
-Connect IQ device `fenix7x` (fēnix 7X, tactix 7, quatix 7X Solar, Enduro 2). Copy it into
-`GARMIN/Apps` on the watch over USB, unplug, and choose SITREP as the watch face. After a
+Connect IQ device `fenix7x` (fēnix 7X, tactix 7, quatix 7X Solar, Enduro 2). Either:
+
+- **Bluetooth:** on the phone, share `SITREP.prg` to [Gadgetbridge](https://gadgetbridge.org)
+  or [Pulse](https://github.com/zoop-dev/pulse); it uploads the face to the watch.
+- **USB:** copy it into `GARMIN/Apps` on the watch, then unplug.
+
+Then choose SITREP as the watch face. Updates keep your layout; the face's Customize menu
+on the watch shows the installed version. After a
 recent Garmin firmware change a `.prg` only runs on the model it was built for; for other
 watches build it yourself.
 
