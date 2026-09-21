@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""garmin-eject: unmount a USB-connected Garmin watch so it can be unplugged.
+
+Same as eject in the file manager. The watch imports new files (waypoints,
+faces, settings) only when it is physically unplugged afterwards. The other
+garmin-* tools mount it again on their own when they need it.
+"""
+
+import re
+import subprocess
+import sys
+
+GARMIN_USB_VENDOR = "091e"
+
+
+def main():
+    if len(sys.argv) > 1:
+        sys.exit(__doc__.strip() + "\n\nusage: garmin-eject (no arguments)")
+    listing = subprocess.run(["gio", "mount", "-l"], capture_output=True, text=True).stdout
+    uris = sorted(set(re.findall(r"-> (mtp://%s_\S+)" % GARMIN_USB_VENDOR, listing)))
+    if not uris:
+        print("no Garmin watch mounted; safe to unplug")
+        return
+    for uri in uris:
+        result = subprocess.run(["gio", "mount", "-u", uri], capture_output=True, text=True)
+        if result.returncode != 0:
+            sys.exit(f"could not unmount {uri}: {result.stderr.strip() or 'unknown error'}\n"
+                     "close any file manager window or program still using the watch, then retry")
+        print(f"unmounted {uri}")
+    print("safe to unplug the watch now")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,22 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later
+     Settings of the face. Slot values are indexes into Fields.TABLE (source/Fields.mc);
+     set them from a computer with tools/garmin-sitrep. -->
+<properties>
+    <property id="top" type="number">1</property>
+    <property id="left1" type="number">10</property>
+    <property id="right1" type="number">4</property>
+    <property id="left2" type="number">7</property>
+    <property id="right2" type="number">2</property>
+    <property id="bottom" type="number">15</property>
+    <property id="arc_top" type="number">8</property>
+    <property id="arc_bottom" type="number">15</property>
+    <property id="accent_color" type="number">16755200</property>
+    <property id="time_color" type="number">16777215</property>
+    <property id="seconds" type="boolean">true</property>
+    <property id="seconds_always" type="boolean">true</property>
+    <property id="notifications" type="boolean">true</property>
+    <property id="dnd_blank" type="boolean">true</property>
+    <property id="light" type="boolean">false</property>
+    <property id="solar_icon" type="boolean">true</property>
+    <property id="easter_eggs" type="boolean">true</property>
+</properties>

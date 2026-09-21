@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""garmin-sitrep: choose what the SITREP watch face shows, from the command line.
+
+  garmin-sitrep options                          what a slot can show
+  garmin-sitrep show                             current layout on the watch
+  garmin-sitrep set top=sunrise row1=steps,hr bottom=pressure arc_top=solar
+  garmin-sitrep set accent_color=#00AAFF seconds=false
+  garmin-sitrep reset                            back to the face's defaults
+
+Slots: top, left1, right1, left2, right2, bottom (row1=L,R and row2=L,R set two at
+once), arc_top, arc_bottom. Other settings: accent_color, time_color (#RRGGBB, the
+text colour on the dark theme), seconds, seconds_always, notifications, dnd_blank, light, solar_icon,
+easter_eggs (true/false).
+
+The option list is read from the face itself (faces/sitrep/source/Fields.mc), the
+defaults from faces/sitrep/resources/settings/properties.xml, so this tool always
+matches the installed face. Settings live on the watch in
+GARMIN/Apps/SETTINGS/SITREP.SET; every write backs up the previous file first.
+Eject afterwards (tools/garmin-eject); the face picks the change up after unplugging.
+The watch has to be plugged in to read or change the settings.
+"""
+
+import argparse
+import importlib.machinery
+import importlib.util
+import os
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+FACE = os.path.join(HERE, "..")
+FIELDS_MC = os.path.join(FACE, "source", "Fields.mc")
+PROPERTIES = os.path.join(FACE, "resources", "settings", "properties.xml")
+MAKE_ICONS = os.path.join(FACE, "make_icons.py")
+SETTINGS_NAME = "SITREP.SET"   # named after the installed PRG (bin/SITREP.prg)
+SLOTS = ["top", "left1", "right1", "left2", "right2", "bottom"]
+ARCS = ["arc_top", "arc_bottom"]
+ROWS = {"row1": ("left1", "right1"), "row2": ("left2", "right2")}
+
+
+def load_settings_module():
+    loader = importlib.machinery.SourceFileLoader("sitrep_settings", os.path.join(HERE, "sitrep_settings.py"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+# reads and writes the settings file; a caller may swap in a richer module with the same API
+ciq = load_settings_module()
+
+
+def read_fields():
+    """[(name, label, arc)] in index order, from the TABLE in Fields.mc."""
+    with open(FIELDS_MC, encoding="utf-8") as fh:
+        text = fh.read()
+    table = text[text.index("const TABLE"):]
+    rows = re.findall(r'\[\s*"(\w+)"\s*,\s*"([^"]*)"\s*,\s*(true|false)\s*(?:,\s*"[^"]*"\s*)?\]', table)
+    if not rows:
+        sys.exit(f"no field table found in {FIELDS_MC}")
+    return [(name, label, arc == "true") for name, label, arc in rows]
+
+
+def read_icons():
+    """{field name: Tabler icon name}, from the letters in Fields.mc and the ICONS list."""
+    with open(FIELDS_MC, encoding="utf-8") as fh:
+        table = fh.read()
+    letters = dict(re.findall(r'\[\s*"(\w+)"\s*,\s*"[^"]*"\s*,\s*(?:true|false)\s*,\s*"([A-Za-z]?)"\s*\]', table))
+    with open(MAKE_ICONS, encoding="utf-8") as fh:
+        source = fh.read()
+    names = re.findall(r'"([\w-]+)"', source[source.index("ICONS = ["):source.index("]", source.index("ICONS = ["))])
+    def index(letter):   # make_icons.py: A..Z, then a..z
+        return ord(letter) - ord("A") if letter.isupper() else 26 + ord(letter) - ord("a")
+    letters = {f: l for f, l in letters.items() if l}
+    return {field: names[index(letter)] for field, letter in letters.items() if index(letter) < len(names)}
+
+
+def read_defaults():
+    """Face defaults, in properties.xml order, typed like the watch stores them."""
+    defaults = {}
+    for prop in ET.parse(PROPERTIES).getroot().iter("property"):
+        kind, raw = prop.get("type"), (prop.text or "").strip()
+        if kind == "number":
+            defaults[prop.get("id")] = int(raw, 0)
+        elif kind == "boolean":
+            defaults[prop.get("id")] = raw.lower() == "true"
+        elif kind == "float":
+            defaults[prop.get("id")] = ciq.Typed(ciq.T_FLOAT, float(raw))
+        else:
+            defaults[prop.get("id")] = raw
+    return defaults
+
+
+def settings_path(writable=False):
+    folder = ciq.settings_dir(writable)
+    match = next((p for p in ciq.settings_files(folder)
+                  if os.path.basename(p).upper() == SETTINGS_NAME.upper()), None)
+    return match, os.path.join(folder, SETTINGS_NAME)
+
+
+def current(path):
+    """Defaults, overlaid with what the watch holds (keys from an older face version are kept)."""
+    values = read_defaults()
+    if path:
+        stored = ciq.read(path)
+        if isinstance(stored, dict):
+            values.update(stored)
+    return values
+
+
+def field_name(fields, value):
+    if isinstance(value, int) and 0 <= value < len(fields):
+        return fields[value][0]
+    return f"unknown ({value})"
+
+
+def parse_field(fields, slot, text, arc):
+    names = [f[0] for f in fields]
+    if text.isdigit():
+        index = int(text)
+        if index >= len(fields):
+            raise ValueError(f"{slot}: no option {index}, see: garmin-sitrep options")
+    elif text in names:
+        index = names.index(text)
+    else:
+        close = [n for n in names if n.startswith(text)]
+        hint = f" (did you mean {', '.join(close)}?)" if close else ""
+        raise ValueError(f"{slot}: unknown option {text!r}{hint}; see: garmin-sitrep options")
+    if arc and index != 0 and not fields[index][2]:
+        arcs = ", ".join(f[0] for f in fields if f[2])
+        raise ValueError(f"{slot}: {fields[index][0]} cannot fill an arc; arcs take: none, {arcs}")
+    return index
+
+
+def print_layout(values, fields):
+    """The face as ASCII: each place shows [icon] option, as drawn on the watch."""
+    icons = read_icons()
+
+    def f(slot):
+        name = field_name(fields, values.get(slot))
+        if name == "none":
+            return ""
+        return f"[{icons[name]}] {name}" if name in icons else name
+
+    def arc(slot):
+        name = field_name(fields, values.get(slot))
+        return "" if name == "none" else f" {name} "
+
+    w = 50
+    sub = []
+    if values.get("notifications"):
+        sub.append("[message] count")
+    if values.get("solar_icon"):
+        sub.append("(sun in light)")
+    if values.get("seconds"):
+        sub.append("ss")
+    rows = [
+        ("   .-" + arc("arc_top").center(w - 10, "~") + "-.   ", True),
+        ("  /" + f("top").center(w - 6) + "\\  ", True),
+        (" |" + f("left1").center((w - 4) // 2) + f("right1").center((w - 4) // 2) + "| ", True),
+        ("|" + "HH:MM".center(w - 2) + "|", True),
+        ("|" + "   ".join(sub).center(w - 2) + "|", True),
+        (" |" + f("left2").center((w - 4) // 2) + f("right2").center((w - 4) // 2) + "| ", True),
+        ("  \\" + f("bottom").center(w - 6) + "/  ", True),
+        ("   '-" + arc("arc_bottom").center(w - 10, "~") + "-'   ", True),
+    ]
+    for line, _ in rows:
+        print("  " + line.center(w))
+    theme = "light (black on white)" if values.get("light") else "dark"
+    print(f"\n  theme {theme}, accent {ciq.show_value('color', values.get('accent_color'))}, "
+          f"blank on Do Not Disturb: {'yes' if values.get('dnd_blank') else 'no'}")
+    for key, value in values.items():
+        if key not in SLOTS + ARCS + ["light", "accent_color", "dnd_blank", "notifications", "solar_icon", "seconds"]:
+            print(f"  {key}: {ciq.show_value(key, value)}")
+
+
+# --- commands ---------------------------------------------------------------------------
+
+def cmd_options(args):
+    print(f"{'#':>3}  {'name':14} {'label':6} arc")
+    for index, (name, label, arc) in enumerate(read_fields()):
+        print(f"{index:3}  {name:14} {label or '-':6} {'yes' if arc else ''}")
+
+
+def cmd_show(args):
+    fields = read_fields()
+    path, _ = settings_path()
+    if not path:
+        print("no SITREP.SET on the watch yet: the face runs on its defaults, which are")
+    else:
+        print(f"== {path}")
+    if any(os.path.basename(p).upper() == SETTINGS_NAME.upper() for p in ciq.pending_files()):
+        print("   (includes a change queued for the watch, not pushed yet)")
+    print_layout(current(path), fields)
+
+
+def write(values, path, target, dry_run):
+    data = ciq.encode(values)
+    if ciq.decode(data) != values:
+        sys.exit("internal error: the new settings file does not decode back; nothing written")
+    if dry_run:
+        print("dry run, nothing written")
+        return
+    if ciq.is_mirror(target):
+        ciq.queue_change(SETTINGS_NAME, data)
+        return
+    local = os.path.join(os.path.expanduser("~/.cache/garmin-sitrep"), SETTINGS_NAME)
+    os.makedirs(os.path.dirname(local), exist_ok=True)
+    with open(local, "wb") as fh:
+        fh.write(data)
+    if path:
+        print(f"backed up the current file to {ciq.backup([path], 'sitrep')}")
+    ciq.copy_to_watch(local, target)
+    ciq.mirror_file(local, f"Apps/SETTINGS/{SETTINGS_NAME}")
+    print(f"wrote {SETTINGS_NAME} on the watch. Run tools/garmin-eject and unplug to apply.")
+
+
+def cmd_set(args):
+    fields = read_fields()
+    path, target = settings_path(writable=True)
+    values = current(path)
+    changes = {}
+    for assignment in args.assignments:
+        key, sep, text = assignment.partition("=")
+        if not sep:
+            sys.exit(f"expected KEY=VALUE, got {assignment!r}")
+        if key in ROWS:
+            parts = text.split(",")
+            if len(parts) != 2:
+                sys.exit(f"{key} takes two options, e.g. {key}=steps,heart_rate")
+            for slot, part in zip(ROWS[key], parts):
+                changes[slot] = parse_field(fields, slot, part.strip(), arc=False)
+        elif key in SLOTS or key in ARCS:
+            changes[key] = parse_field(fields, key, text.strip(), arc=key in ARCS)
+        elif key in values:
+            changes[key] = ciq.parse_new_value(key, values[key], text)
+        else:
+            known = ", ".join(SLOTS + list(ROWS) + ARCS + [k for k in values if k not in SLOTS + ARCS])
+            sys.exit(f"unknown setting {key!r}; settings: {known}")
+    for key, new in changes.items():
+        old = values.get(key)
+        if key in SLOTS or key in ARCS:
+            print(f"  {key:12} {field_name(fields, old)}  ->  {field_name(fields, new)}")
+        else:
+            print(f"  {key:12} {ciq.show_value(key, old)}  ->  {ciq.show_value(key, new)}")
+        values[key] = new
+    write(values, path, target, args.dry_run)
+
+
+def cmd_reset(args):
+    path, target = settings_path(writable=True)
+    values = read_defaults()
+    print_layout(values, read_fields())
+    write(values, path, target, args.dry_run)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("options", help="what a slot can show")
+    p.set_defaults(func=cmd_options)
+    p = sub.add_parser("show", help="current layout on the watch")
+    p.set_defaults(func=cmd_show)
+    p = sub.add_parser("set", help="change slots or settings")
+    p.add_argument("assignments", nargs="+", metavar="KEY=VALUE")
+    p.add_argument("-n", "--dry-run", action="store_true")
+    p.set_defaults(func=cmd_set)
+    p = sub.add_parser("reset", help="write the face's defaults")
+    p.add_argument("-n", "--dry-run", action="store_true")
+    p.set_defaults(func=cmd_reset)
+    args = parser.parse_args()
+    try:
+        args.func(args)
+    except (ValueError, OSError) as exc:
+        sys.exit(f"error: {exc}")
+
+
+if __name__ == "__main__":
+    main()

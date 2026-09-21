@@ -1,0 +1,4 @@
+<fonts>
+    <!-- Tabler Icons (MIT, see TABLER-LICENSE), built by make_icons.py; letters A, B, C... -->
+    <font id="IconFont" filename="icons.fnt" antialias="false" />
+</fonts>
