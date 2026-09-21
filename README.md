@@ -95,6 +95,10 @@ On by default; `tools/garmin-sitrep set easter_eggs=false` turns them all off.
 - Seconds stay on in low-power mode (`seconds_always`): only the two digits are redrawn
   each second, inside the power budget the watch allows. If the watch reports the budget
   exceeded, seconds show only while the watch is awake. `seconds_always=false` saves battery.
+- A value too wide for its place (the side columns are the narrowest) is fitted rather
+  than run into its neighbour: steps and calories first show as thousands (`12.3K`,
+  `123K`), then the value drops to a smaller font, then loses its icon. A number that
+  fits is shown in full.
 - Sunrise and sunset need Connect IQ API 3.3 and a last known position.
 - Temperature comes from the weather service when available, otherwise from the watch's
   own sensor, which reads warm on the wrist.

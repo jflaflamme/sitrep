@@ -100,14 +100,18 @@ class SitrepView extends WatchUi.WatchFace {
         // the stacked layout pushed the last two lines off the bottom).
         var ys = [scale(50, s), scale(80, s), scale(128, s), scale(168, s), scale(196, s), scale(226, s)];
 
+        // widest a field may draw: the side columns are 120 px apart, the lines above and
+        // below have the width of the circle at their height
         var side = scale(60, s);
-        drawField(dc, cx, ys[0], setting("top", Fields.DATE) as Number);
-        drawField(dc, cx - side, ys[1], setting("left1", Fields.ELEVATION) as Number);
-        drawField(dc, cx + side, ys[1], setting("right1", Fields.CALORIES) as Number);
+        var sideMax = scale(112, s);
+        var lineMax = scale(200, s);
+        drawField(dc, cx, ys[0], setting("top", Fields.DATE) as Number, lineMax);
+        drawField(dc, cx - side, ys[1], setting("left1", Fields.ELEVATION) as Number, sideMax);
+        drawField(dc, cx + side, ys[1], setting("right1", Fields.CALORIES) as Number, sideMax);
         drawTime(dc, cx, ys[2], ys[3], s);
-        drawField(dc, cx - side, ys[4], setting("left2", Fields.HEART_RATE) as Number);
-        drawField(dc, cx + side, ys[4], setting("right2", Fields.STEPS) as Number);
-        drawField(dc, cx, ys[5], setting("bottom", Fields.BATTERY) as Number);
+        drawField(dc, cx - side, ys[4], setting("left2", Fields.HEART_RATE) as Number, sideMax);
+        drawField(dc, cx + side, ys[4], setting("right2", Fields.STEPS) as Number, sideMax);
+        drawField(dc, cx, ys[5], setting("bottom", Fields.BATTERY) as Number, lineMax);
     }
 
     // --- layout pieces ------------------------------------------------------------
@@ -134,7 +138,7 @@ class SitrepView extends WatchUi.WatchFace {
         } else if (setting("notifications", true) as Boolean) {
             var count = device.notificationCount;
             if (count != null && count > 0) {
-                drawPair(dc, cx - scale(56, s), subY, "P", count.toString(), SUB_FONT);
+                drawPair(dc, cx - scale(56, s), subY, "P", count.toString(), SUB_FONT, scale(80, s));
             }
         }
         _secX = timeX + timeW / 2 + gap + secW / 2;
@@ -236,23 +240,42 @@ class SitrepView extends WatchUi.WatchFace {
         }
     }
 
-    private function drawField(dc as Dc, x as Number, y as Number, id as Number) as Void {
+    private function drawField(dc as Dc, x as Number, y as Number, id as Number,
+                               maxWidth as Number) as Void {
         var value = fieldValue(id);
         if (value == null) {
             return;
         }
         // a field may pick its own icon (weather: the current condition)
         var icon = value.size() > 2 && value[2] != null ? value[2] as String : Fields.icon(id);
-        drawPair(dc, x, y, icon.length() > 0 ? icon : Fields.label(id), value[0] as String, VALUE_FONT);
+        // and a shorter text for when the full one is too wide (counts: 12.3K)
+        var text = value[0] as String;
+        if (value.size() > 3 && value[3] != null) {
+            var full = labelled(dc, icon.length() > 0 ? icon : Fields.label(id), text, VALUE_FONT);
+            if (full > maxWidth) {
+                text = value[3] as String;
+            }
+        }
+        drawPair(dc, x, y, icon.length() > 0 ? icon : Fields.label(id), text, VALUE_FONT, maxWidth);
     }
 
-    // icon (one letter of IconFont) or small text label, then the value, centred together on x
+    // icon (one letter of IconFont) or small text label, then the value, centred together on x.
+    // Wider than maxWidth, the value drops to SUB_FONT; still too wide, the label goes too.
     private function drawPair(dc as Dc, x as Number, y as Number, label as String, text as String,
-                              valueFont as FontDefinition) as Void {
-        var labelFont = (label.length() == 1 ? _iconFont : LABEL_FONT) as FontType;
+                              valueFont as FontDefinition, maxWidth as Number) as Void {
+        var labelFont = labelFontFor(label);
         var gap = label.length() > 0 ? 4 : 0;
         var labelWidth = label.length() > 0 ? dc.getTextWidthInPixels(label, labelFont) : 0;
         var total = labelWidth + gap + dc.getTextWidthInPixels(text, valueFont);
+        if (total > maxWidth && valueFont != SUB_FONT) {
+            valueFont = SUB_FONT;
+            total = labelWidth + gap + dc.getTextWidthInPixels(text, valueFont);
+        }
+        if (total > maxWidth && labelWidth > 0) {
+            gap = 0;
+            labelWidth = 0;
+            total = dc.getTextWidthInPixels(text, valueFont);
+        }
         var left = x - total / 2;
         var vcenter = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
         if (labelWidth > 0) {
@@ -261,6 +284,16 @@ class SitrepView extends WatchUi.WatchFace {
         }
         dc.setColor(_text, Graphics.COLOR_TRANSPARENT);
         dc.drawText(left + labelWidth + gap, y, valueFont, text, vcenter);
+    }
+
+    // width drawPair gives label and text before any fitting
+    private function labelled(dc as Dc, label as String, text as String, valueFont as FontDefinition) as Number {
+        var labelWidth = label.length() > 0 ? dc.getTextWidthInPixels(label, labelFontFor(label)) + 4 : 0;
+        return labelWidth + dc.getTextWidthInPixels(text, valueFont);
+    }
+
+    private function labelFontFor(label as String) as FontType {
+        return (label.length() == 1 ? _iconFont : LABEL_FONT) as FontType;
     }
 
     // Top arc spans 150 to 30 degrees over the top, bottom arc 210 to 330 under the bottom;
@@ -302,7 +335,8 @@ class SitrepView extends WatchUi.WatchFace {
 
     // --- data ---------------------------------------------------------------------
 
-    // [text, fraction 0..1 or null], or null for an empty slot
+    // [text, fraction 0..1 or null, own icon or null, shorter text or null], or null for an
+    // empty slot; the last two may be left out
     private function fieldValue(id as Number) as Array? {
         var monitor = ActivityMonitor.getInfo();
         var settings = System.getDeviceSettings();
@@ -315,7 +349,8 @@ class SitrepView extends WatchUi.WatchFace {
             // rocket once the step goal is reached
             var done = eggs() && monitor.steps != null && monitor.stepGoal != null
                 && monitor.stepGoal > 0 && monitor.steps >= monitor.stepGoal;
-            return [orDash(monitor.steps), ratio(monitor.steps, monitor.stepGoal), done ? "e" : null];
+            return [orDash(monitor.steps), ratio(monitor.steps, monitor.stepGoal), done ? "e" : null,
+                    compact(monitor.steps)];
         } else if (id == Fields.DISTANCE) {
             if (monitor.distance == null) {
                 return ["--", null];
@@ -326,7 +361,7 @@ class SitrepView extends WatchUi.WatchFace {
             }
             return [km.format("%.1f") + "KM", null];
         } else if (id == Fields.CALORIES) {
-            return [orDash(monitor.calories), null];
+            return [orDash(monitor.calories), null, null, compact(monitor.calories)];
         } else if (id == Fields.FLOORS) {
             if (!(monitor has :floorsClimbed)) {
                 return ["--", null];
@@ -546,6 +581,19 @@ class SitrepView extends WatchUi.WatchFace {
 
     private function orDash(value as Numeric?) as String {
         return value == null ? "--" : value.toNumber().toString();
+    }
+
+    // A count in thousands, the way Garmin's own faces do: 1.2K, 12.3K, 123K
+    // (drawField uses it only when the full number does not fit its place).
+    private function compact(value as Numeric?) as String? {
+        if (value == null || value < 1000) {
+            return null;
+        }
+        var thousands = value / 1000.0;
+        if (thousands < 100) {
+            return (((thousands * 10).toNumber()) / 10.0).format("%.1f") + "K";
+        }
+        return thousands.toNumber().toString() + "K";
     }
 
     private function ratio(value as Numeric?, goal as Numeric?) as Float? {
