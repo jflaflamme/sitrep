@@ -384,6 +384,8 @@ class SitrepView extends WatchUi.WatchFace {
             var bpm = text.toNumber();
             var alien = eggs() && bpm != null && (bpm == 111 || bpm >= topZoneStart());
             return [text, null, alien ? "a" : null];
+        } else if (id == Fields.RESTING_HR) {
+            return [HudData.restingHeartRateText(), null];
         } else if (id == Fields.BODY_BATTERY) {
             return percent(HudData.sensorValue(:getBodyBatteryHistory));
         } else if (id == Fields.STRESS) {

@@ -27,6 +27,7 @@ module Fields {
     const ALARMS = 19;
     const WX_AGE = 20;
     const WEATHER = 21;
+    const RESTING_HR = 22;
 
     // [cli name, text label, can fill an arc, icon letter in IconFont ("" = use the label)]
     const TABLE = [
@@ -51,7 +52,8 @@ module Fields {
         ["notifications", "MSG", false, "P"],
         ["alarms", "ALM", false, "Q"],
         ["wx_age", "WX", false, "R"],
-        ["weather", "WX", false, "R"]
+        ["weather", "WX", false, "R"],
+        ["resting_hr", "RHR", false, "F"]
     ];
 
     function label(id as Number) as String {

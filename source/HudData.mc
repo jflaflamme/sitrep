@@ -7,6 +7,7 @@ import Toybox.SensorHistory;
 import Toybox.System;
 import Toybox.Time;
 import Toybox.Time.Gregorian;
+import Toybox.UserProfile;
 
 // Everything the faces read off the watch. Faces own the drawing and the wording;
 // this module owns "what is the number, and is it even available on this device".
@@ -99,6 +100,15 @@ module HudData {
             }
         }
         return Lang.format("$1$:$2$", [hour.format("%02d"), clock.min.format("%02d")]);
+    }
+
+    // Resting heart rate as the watch last worked it out (UserProfile, updated daily).
+    function restingHeartRateText() as String {
+        var profile = UserProfile.getProfile();
+        if (profile has :restingHeartRate && profile.restingHeartRate != null) {
+            return (profile.restingHeartRate as Number).toString();
+        }
+        return "--";
     }
 
     function heartRateText() as String {
