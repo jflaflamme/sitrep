@@ -23,8 +23,13 @@ class SitrepView extends WatchUi.WatchFace {
     // Garmin's own bold fonts: drawn for this screen, far heavier than a custom bitmap font.
     private const LABEL_FONT = Graphics.FONT_XTINY;
     private const VALUE_FONT = Graphics.FONT_SMALL;
+    private const CALM_FONT = Graphics.FONT_LARGE;     // calm layout: fewer fields, so bigger
+
     private const TIME_FONT = Graphics.FONT_NUMBER_HOT;
     private const SUB_FONT = Graphics.FONT_TINY;
+
+    private var _calm as Boolean = false;
+    private var _bigY as Number = -1;
 
     // Memory-in-pixel screens reflect light instead of emitting it: only full-strength
     // colours stay readable. Set per update from the "light" setting.
@@ -89,6 +94,12 @@ class SitrepView extends WatchUi.WatchFace {
             return;
         }
 
+        _calm = setting("calm", false) as Boolean;
+        if (_calm) {
+            // one accent (the top arc), grey icons, white values: less shouting at once
+            _label = setting("light", false) as Boolean ? 0x555555 : _track;
+        }
+
         drawArc(dc, cx, cy, s, setting("arc_top", Fields.BODY_BATTERY) as Number, true);
         drawArc(dc, cx, cy, s, setting("arc_bottom", Fields.BATTERY) as Number, false);
         if (setting("easter_eggs", true) as Boolean) {
@@ -101,19 +112,33 @@ class SitrepView extends WatchUi.WatchFace {
         // (the small line under the time sits at 162, not 168: at 168 the message count
         // crowded the heart rate row below, seen on the watch in 0.2.0)
         var ys = [scale(50, s), scale(80, s), scale(128, s), scale(162, s), scale(196, s), scale(226, s)];
+        if (_calm) {
+            // no side row above the time: date, clock, one row of two, one line under it.
+            // the clock font is tall: the line under it needs room or the ghost touches the digits
+            ys = [scale(44, s), 0, scale(116, s), scale(172, s), scale(206, s), scale(238, s)];
+        }
 
         // widest a field may draw: the side columns are 120 px apart, the lines above and
         // below have the width of the circle at their height
+        _bigY = ys[4];
         var side = scale(60, s);
         var sideMax = scale(112, s);
+        if (_calm) {
+            // the big font is wide: keep the two values clear of the arc ring
+            side = scale(50, s);
+            sideMax = scale(94, s);
+        }
         var lineMax = scale(200, s);
         drawField(dc, cx, ys[0], setting("top", Fields.DATE) as Number, lineMax);
-        drawField(dc, cx - side, ys[1], setting("left1", Fields.ELEVATION) as Number, sideMax);
-        drawField(dc, cx + side, ys[1], setting("right1", Fields.CALORIES) as Number, sideMax);
+        if (!_calm) {
+            drawField(dc, cx - side, ys[1], setting("left1", Fields.ELEVATION) as Number, sideMax);
+            drawField(dc, cx + side, ys[1], setting("right1", Fields.CALORIES) as Number, sideMax);
+        }
         drawTime(dc, cx, ys[2], ys[3], s);
         drawField(dc, cx - side, ys[4], setting("left2", Fields.HEART_RATE) as Number, sideMax);
         drawField(dc, cx + side, ys[4], setting("right2", Fields.STEPS) as Number, sideMax);
         drawField(dc, cx, ys[5], setting("bottom", Fields.BATTERY) as Number, lineMax);
+        _bigY = -1;
     }
 
     // --- layout pieces ------------------------------------------------------------
@@ -125,7 +150,8 @@ class SitrepView extends WatchUi.WatchFace {
         // seconds sit right of the minutes, low beside the digits; time and seconds are
         // centred together so the pair stays balanced
         var gap = scale(4, s);
-        var secW = dc.getTextWidthInPixels("00", SUB_FONT);
+        var secFont = _calm ? Graphics.FONT_XTINY : SUB_FONT;
+        var secW = dc.getTextWidthInPixels("00", secFont);
         var timeW = dc.getTextWidthInPixels(time, TIME_FONT);
         var withSeconds = setting("seconds", true) as Boolean;
         var timeX = withSeconds ? cx - (secW + gap) / 2 : cx;
@@ -146,11 +172,11 @@ class SitrepView extends WatchUi.WatchFace {
         _secX = timeX + timeW / 2 + gap + secW / 2;
         _secY = y + scale(10, s);
         var w = secW + scale(6, s);
-        var h = dc.getFontHeight(SUB_FONT);
+        var h = dc.getFontHeight(secFont);
         _secBox = [_secX - w / 2, _secY - h / 2, w, h];
         if (showSeconds()) {
             dc.setColor(_text, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(_secX, _secY, SUB_FONT, System.getClockTime().sec.format("%02d"), center);
+            dc.drawText(_secX, _secY, secFont, System.getClockTime().sec.format("%02d"), center);
         }
         // centre: skull on a nearly empty battery, else the sun in light, else the moon at night
         var solar = HudData.solarIntensity();
@@ -258,7 +284,7 @@ class SitrepView extends WatchUi.WatchFace {
                 text = value[3] as String;
             }
         }
-        drawPair(dc, x, y, icon.length() > 0 ? icon : Fields.label(id), text, VALUE_FONT, maxWidth);
+        drawPair(dc, x, y, icon.length() > 0 ? icon : Fields.label(id), text, valueFont(y), maxWidth);
     }
 
     // icon (one letter of IconFont) or small text label, then the value, centred together on x.
@@ -286,6 +312,11 @@ class SitrepView extends WatchUi.WatchFace {
         }
         dc.setColor(_text, Graphics.COLOR_TRANSPARENT);
         dc.drawText(left + labelWidth + gap, y, valueFont, text, vcenter);
+    }
+
+    // calm: the two fields beside the clock carry the screen, so they get the big font
+    private function valueFont(y as Number) as FontDefinition {
+        return (_calm && y == _bigY) ? CALM_FONT : VALUE_FONT;
     }
 
     // width drawPair gives label and text before any fitting

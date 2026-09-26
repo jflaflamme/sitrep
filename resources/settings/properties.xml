@@ -19,4 +19,5 @@
     <property id="light" type="boolean">false</property>
     <property id="solar_icon" type="boolean">true</property>
     <property id="easter_eggs" type="boolean">true</property>
+    <property id="calm" type="boolean">false</property>
 </properties>
